@@ -1,6 +1,6 @@
 <?php
 /**
-* PHPQuantio 1.0
+* PHPQuantio 1.1
 * Micro biblioteca PHP com funções úteis para desenvolvimento web
 * https://github.com/gmasson/phpquantio
 * License MIT
@@ -48,8 +48,7 @@ function phpq_filterNumb( $input )
 # Filters - URLs
 function phpq_filterUrl( $input, $with_underline = '' )
 {
-	$input = htmlspecialchars( $input );
-	$input = phpq_im( $input );
+	$input = phpq_filterText( $input, 'print_html' );
 	if ( $with_underline != '' )
 	{
 		$input = str_replace( " ", "_", $input );
@@ -61,7 +60,7 @@ function phpq_filterUrl( $input, $with_underline = '' )
 function phpq_filterUser( $input, $with_underline = 'y' )
 {
 	$input = strip_tags( $input );
-	$input = phpq_im( $input );
+	$input = phpq_filterText( $input );
 	$input = strtolower( $input );
 	if ( $with_underline != '' )
 	{
