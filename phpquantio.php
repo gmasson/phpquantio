@@ -1,6 +1,6 @@
 <?php
 /**
-* PHPQuantio 1.2
+* PHPQuantio 1.3
 * Micro biblioteca PHP com funções úteis para desenvolvimento web
 * https://github.com/gmasson/phpquantio
 * License MIT
@@ -12,17 +12,35 @@ if (session_status() == PHP_SESSION_NONE) {
 }
 
 # Verifica a versão do PHP
-if ( phpversion() < '7.3' ) {
+if (version_compare(phpversion(), '7.3', '<')) {
 	die( "Please update PHP to a higher version" );
 }
 
 # Configura o Timezone
-if( ! ini_get( 'date.timezone' ) ) {
+if(!ini_get('date.timezone') ) {
 	date_default_timezone_set('GMT');
 }
 
+# Preenche a sessão para verificação de segurança
+if (empty($_SESSION['pq_min'])) {
+    $_SESSION['pq_min'] = date('i');
+    $_SESSION['pq_hits'] = 1;
+}
+
+# Limite de 40 acessos por minuto
+if ($_SESSION['pq_hits'] >= 40 && $_SESSION['pq_min'] == date('i')) {
+    header('HTTP/1.1 429 Too Many Requests');
+    header('Retry-After: 60');  // Define o cabeçalho Retry-After para sugerir quando a próxima solicitação deve ser feita
+    die("Too many requests. Please try again later.");
+} elseif ($_SESSION['pq_min'] != date('i')) {
+    $_SESSION['pq_hits'] = 0;
+    $_SESSION['pq_min'] = date('i');
+} else {
+    $_SESSION['pq_hits']++;
+}
+
 # Filtro para textos
-function pq_filter($input, $type = '') {
+function pq_filter($input, $type = '', $add = '') {
 	$input = trim($input);
 
 	switch ($type) {
@@ -55,13 +73,22 @@ function pq_filter($input, $type = '') {
 			break;
 
 		case 'get':
-			$input = filter_input(INPUT_GET, $input, FILTER_SANITIZE_STRING);
-			$input = ($input !== null && $input !== false && $input !== '') ? $input : $with_empty;
+			$input = filter_input(INPUT_GET, $input, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+			$input = ($input !== null && $input !== false && $input !== '') ? $input : $add;
 			break;
 
 		case 'post':
-			$input = filter_input(INPUT_POST, $input, FILTER_SANITIZE_STRING);
-			$input = ($input !== null && $input !== false && $input !== '') ? $input : $with_empty;
+			$input = filter_input(INPUT_POST, $input, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+			$input = ($input !== null && $input !== false && $input !== '') ? $input : $add;
+			break;
+
+		case 'pass':
+			$input = strrev($input);
+			$salt = ($add == '') ? '+154 56541@gSmmGHSdat #yii' : $add ;
+			$salt = $salt . '984477' . $salt . '984477554984477';
+			$input = md5('+422554984471654215435415421547' . $input . $salt);
+			$input = substr($input, 0, -3);
+			$input = '$2a$' . $input . '$';
 			break;
 
 		default:
@@ -72,63 +99,33 @@ function pq_filter($input, $type = '') {
 	return $input;
 }
 
-# Gerador de senhas
-function pq_pass($input, $key = 'try +', $substr = -1) {
-	$input = pq_filter($input);
-	$input = substr($input, 0, $substr);
+# Gerador de senha
+function pq_pass($input, $salt = '+154 56541@gSmmGHSdat #yii') {
 	$input = strrev($input);
-	$input = $input . $key;
-	$input = password_hash($input, PASSWORD_DEFAULT);
-	$input = '$2a$' . $input;
+	$salt = $salt . '984477' . $salt . '984477554984477';
+	$input = md5('+422554984471654215435415421547' . $input . $salt);
+	$input = substr($input, 0, -3);
+	$input = '$2a$' . $input . '$';
 	return $input;
 }
 
-# Data Atual
-function pq_date($type = '') {
+# Data e hora atual
+function pq_time($type = '') {
 	$formats = [
 		'd' => 'd',
 		'm' => 'm',
 		'y' => 'Y',
 		'a' => 'Y',
-		'pt' => 'd/m/Y',
-	];
-
-	return isset($formats[$type]) ? date($formats[$type]) : date('Y/m/d');
-}
-
-# Hora atual
-function pq_hour($type = '') {
-	$formats = [
+		'data' => 'd/m/Y',
+		'date' => 'Y/m/d',
 		'h' => 'h',
 		'm' => 'i',
 		's' => 's',
+		'hora' => 'H:i:s',
+		'hour' => 'H:i:s',
 	];
 
-	return isset($formats[$type]) ? date($formats[$type]) : date('H:i:s');
-}
-
-# Gerador de Hash
-function pq_hash($size = 12) {
-	$characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%-&*()_+=";
-	$randomString = '';
-
-	for ($i = 0; $i < $size; $i++) {
-		$randomString .= $characters[rand(0, strlen($characters) - 1)];
-	}
-
-	return $randomString;
-}
-
-# Gerador de Loren Ipsum
-function pq_lorem($length = 445) {
-	$text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
-	$maxLength = 445;
-
-	if ($length > $maxLength) {
-		return $text;
-	} else {
-		return mb_substr($text, 0, $length, 'UTF-8');
-	}
+	return isset($formats[$type]) ? date($formats[$type]) : date('Y/m/d - H:i:s');
 }
 
 # Envio de e-mail usando Mail
@@ -159,15 +156,7 @@ function pq_ip() {
 	}
 }
 
-# Listar arquivos de uma pasta
-function pq_fileListing($folder, $tag = '<p>', $endTag = '</p>') {
-	$dir = dir($folder);
-	while ($file = $dir->read()) {
-		echo $tag . pq_filterText($file) . $endTag;
-	}
-	$dir->close();
-}
-
+# Gerador de captcha
 function pq_captcha($name = 'c21', $class = '') {
 	$num1 = rand(0, 10);
 	$num2 = rand(0, 10);
@@ -189,9 +178,10 @@ function pq_captcha($name = 'c21', $class = '') {
 	return $captchaHTML;
 }
 
-function pq_validCaptcha($name = 'c21') {
-	if (isset($_SESSION[$name]) && isset(pq_filterPost($name))) {
-		$submittedResult = pq_filterPost($name);
+# Validador do captcha
+function pq_validCaptcha($value, $name = 'c21') {
+	if (isset($_SESSION[$name])) {
+		$submittedResult = pq_filter($name);
 		$correctResult = $_SESSION[$name];
 		unset($_SESSION[$name]);
 		return $submittedResult === $correctResult;
