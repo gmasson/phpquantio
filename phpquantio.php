@@ -1,10 +1,15 @@
 <?php
 /**
-* PHPQuantio 1.3
+* PHPQuantio 1.4
 * Micro biblioteca PHP com funções úteis para desenvolvimento web
 * https://github.com/gmasson/phpquantio
 * License MIT
 */
+
+# Chave para Senhas (atualize essa chave em cada projeto)
+define('pq_key', 'sHR1gD30FG86dye2mmDFryHJ45F2FDHRqqTU');
+
+/* NÃO ALTERE A PARTIR DAQUI */
 
 # Verifica se tem session_start
 if (session_status() == PHP_SESSION_NONE) {
@@ -75,20 +80,22 @@ function pq_filter($input, $type = '', $add = '') {
 		case 'get':
 			$input = filter_input(INPUT_GET, $input, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
 			$input = ($input !== null && $input !== false && $input !== '') ? $input : $add;
+			$input = trim($input);
 			break;
 
 		case 'post':
 			$input = filter_input(INPUT_POST, $input, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
 			$input = ($input !== null && $input !== false && $input !== '') ? $input : $add;
+			$input = trim($input);
 			break;
 
 		case 'pass':
 			$input = strrev($input);
-			$salt = ($add == '') ? '+154 56541@gSmmGHSdat #yii' : $add ;
-			$salt = $salt . '984477' . $salt . '984477554984477';
-			$input = md5('+422554984471654215435415421547' . $input . $salt);
-			$input = substr($input, 0, -3);
-			$input = '$2a$' . $input . '$';
+			$salt = ($add == '') ? '+ 121 @gS457 dat#yii' : $add ;
+			$input = $salt . '94+ç~b' . pq_key . '212' . $input . $salt;
+			$input = hash('sha256', $input);
+			$input = substr($input, 0, -2);
+			$input = '$2a$' . $input;
 			break;
 
 		default:
@@ -96,16 +103,6 @@ function pq_filter($input, $type = '', $add = '') {
 			break;
 	}
 
-	return $input;
-}
-
-# Gerador de senha
-function pq_pass($input, $salt = '+154 56541@gSmmGHSdat #yii') {
-	$input = strrev($input);
-	$salt = $salt . '984477' . $salt . '984477554984477';
-	$input = md5('+422554984471654215435415421547' . $input . $salt);
-	$input = substr($input, 0, -3);
-	$input = '$2a$' . $input . '$';
 	return $input;
 }
 
@@ -157,7 +154,7 @@ function pq_ip() {
 }
 
 # Gerador de captcha
-function pq_captcha($name = 'c21', $class = '') {
+function pq_captcha($name = 'ok', $class = '') {
 	$num1 = rand(0, 10);
 	$num2 = rand(0, 10);
 	$operation = (rand(0, 1) == 0) ? '+' : '-';
@@ -179,7 +176,7 @@ function pq_captcha($name = 'c21', $class = '') {
 }
 
 # Validador do captcha
-function pq_validCaptcha($value, $name = 'c21') {
+function pq_validCaptcha($value, $name = 'ok') {
 	if (isset($_SESSION[$name])) {
 		$submittedResult = pq_filter($name);
 		$correctResult = $_SESSION[$name];
