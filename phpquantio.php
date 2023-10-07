@@ -1,6 +1,6 @@
 <?php
 /**
-* PHPQuantio 1.4
+* PHPQuantio 1.5
 * Micro biblioteca PHP com funções úteis para desenvolvimento web
 * https://github.com/gmasson/phpquantio
 * License MIT
@@ -32,8 +32,8 @@ if (empty($_SESSION['pq_min'])) {
     $_SESSION['pq_hits'] = 1;
 }
 
-# Limite de 40 acessos por minuto
-if ($_SESSION['pq_hits'] >= 40 && $_SESSION['pq_min'] == date('i')) {
+# Limite de 60 acessos por minuto
+if ($_SESSION['pq_hits'] >= 60 && $_SESSION['pq_min'] == date('i')) {
     header('HTTP/1.1 429 Too Many Requests');
     header('Retry-After: 60');  // Define o cabeçalho Retry-After para sugerir quando a próxima solicitação deve ser feita
     die("Too many requests. Please try again later.");
@@ -125,18 +125,6 @@ function pq_time($type = '') {
 	return isset($formats[$type]) ? date($formats[$type]) : date('Y/m/d - H:i:s');
 }
 
-# Envio de e-mail usando Mail
-function pq_mail($email, $subject, $body, $from) {
-	$headers = "MIME-Version: 1.0\r\n";
-	$headers .= "Content-type: text/plain; charset=UTF-8\r\n";
-	$headers .= "From: " . $from . "\r\n";
-	$headers .= "Reply-To: " . $from . "\r\n";
-	$headers .= "Return-Path: " . $from . "\r\n";
-	$sendMail = mail($email, $subject, $body, $headers);
-
-	return $sendMail;
-}
-
 # Navegador do usuário
 function pq_browser() {
 	return $_SERVER['HTTP_USER_AGENT'];
@@ -151,6 +139,18 @@ function pq_ip() {
 	} else {
 		return $_SERVER['REMOTE_ADDR'];
 	}
+}
+
+# Envio de e-mail usando Mail
+function pq_mail($email, $subject, $body, $from) {
+	$headers = "MIME-Version: 1.0\r\n";
+	$headers .= "Content-type: text/plain; charset=UTF-8\r\n";
+	$headers .= "From: " . $from . "\r\n";
+	$headers .= "Reply-To: " . $from . "\r\n";
+	$headers .= "Return-Path: " . $from . "\r\n";
+	$sendMail = mail($email, $subject, $body, $headers);
+
+	return $sendMail;
 }
 
 # Gerador de captcha
@@ -184,4 +184,24 @@ function pq_validCaptcha($value, $name = 'ok') {
 		return $submittedResult === $correctResult;
 	}
 	return false;
+}
+
+# Login com senha única
+function pq_login($input, $pass, $redirect, $redirect_error = '') {
+	$input = pq_filter($input, 'post');
+	if ($input === $pass) {
+		// Preenche a sessão pq_login
+		$_SESSION['pq_login'] = "YSB2aWRhIMOpIGN1cnRhIGUgYmVsYQ==";
+		header("Location: $redirect");
+	} elseif ($redirect_error !== '') {
+		header("Location: $redirect_error");
+	}
+}
+
+# Validação do login
+function pq_validLogin($redirect_error) {
+	if ($_SESSION['pq_login'] !== "YSB2aWRhIMOpIGN1cnRhIGUgYmVsYQ==" || empty($_SESSION['pq_login'])) {
+		// Redirecionar para a URL especificada em $redirect
+		header("Location: $redirect_error");
+	}
 }
