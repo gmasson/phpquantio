@@ -1,6 +1,6 @@
 <?php
 /**
-* PHPQuantio 1.5
+* PHPQuantio 1.5.1
 * Micro biblioteca PHP com funções úteis para desenvolvimento web
 * https://github.com/gmasson/phpquantio
 * License MIT
@@ -142,7 +142,7 @@ function pq_ip() {
 }
 
 # Envio de e-mail usando Mail
-function pq_mail($email, $subject, $body, $from) {
+function pq_mail($email, $subject, $body, $from, $redirect = '', $errorRedirect = '') {
 	$headers = "MIME-Version: 1.0\r\n";
 	$headers .= "Content-type: text/plain; charset=UTF-8\r\n";
 	$headers .= "From: " . $from . "\r\n";
@@ -150,7 +150,15 @@ function pq_mail($email, $subject, $body, $from) {
 	$headers .= "Return-Path: " . $from . "\r\n";
 	$sendMail = mail($email, $subject, $body, $headers);
 
-	return $sendMail;
+	if ($sendMail) {
+		if ($redirect !== '') {
+			header("Location: $redirect");
+		}
+	} else {
+		if ($errorRedirect !== '') {
+			header("Location: $errorRedirect");
+		}
+	}
 }
 
 # Gerador de captcha
@@ -182,26 +190,27 @@ function pq_validCaptcha($value, $name = 'ok') {
 		$correctResult = $_SESSION[$name];
 		unset($_SESSION[$name]);
 		return $submittedResult === $correctResult;
+	} else {
+		return false;
 	}
-	return false;
 }
 
 # Login com senha única
-function pq_login($input, $pass, $redirect, $redirect_error = '') {
+function pq_login($input, $pass, $redirect, $errorRedirect = '') {
 	$input = pq_filter($input, 'post');
 	if ($input === $pass) {
 		// Preenche a sessão pq_login
 		$_SESSION['pq_login'] = "YSB2aWRhIMOpIGN1cnRhIGUgYmVsYQ==";
 		header("Location: $redirect");
-	} elseif ($redirect_error !== '') {
-		header("Location: $redirect_error");
+	} elseif ($errorRedirect !== '') {
+		header("Location: $errorRedirect");
 	}
 }
 
 # Validação do login
-function pq_validLogin($redirect_error) {
+function pq_validLogin($errorRedirect) {
 	if ($_SESSION['pq_login'] !== "YSB2aWRhIMOpIGN1cnRhIGUgYmVsYQ==" || empty($_SESSION['pq_login'])) {
 		// Redirecionar para a URL especificada em $redirect
-		header("Location: $redirect_error");
+		header("Location: $$errorRedirect");
 	}
 }
