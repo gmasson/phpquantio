@@ -107,7 +107,10 @@ class PHPQuantio
 				return $fallback;
 
 			case 'header':
-				$name = 'HTTP_' . strtoupper(str_replace('-', '_', $key));
+				// Normaliza o nome do header para a chave $_SERVER correspondente
+				// (HTTP_ + uppercase + underscores), aceitando tanto 'User-Agent'
+				// quanto 'user-agent' ou 'user_agent'.
+				$name = 'HTTP_' . strtoupper(str_replace(['-', ' '], '_', $key));
 				return isset($_SERVER[$name]) ? trim((string) $_SERVER[$name]) : $fallback;
 
 			case 'env':
@@ -259,10 +262,13 @@ class PHPQuantio
 			'matches'  => hash_equals($str, is_scalar($extra) ? (string) $extra : ''),
 			'different' => $str !== (is_scalar($extra) ? (string) $extra : ''),
 
-			'cpf'      => self::validCpf($str),
-			'cnpj'     => self::validCnpj($str),
-			'phone_br' => self::validPhoneBr($str),
-			'password' => self::validStrongPassword($str, is_array($extra) ? $extra : []),
+			'cpf'        => self::validCpf($str),
+			'cnpj'       => self::validCnpj($str),
+			'phone_br'   => self::validPhoneBr($str),
+			'cep'        => self::validCep($str),
+			'credit_card'=> self::validCreditCard($str),
+			'json'       => self::validJson($str),
+			'password'   => self::validStrongPassword($str, is_array($extra) ? $extra : []),
 
 			'date'     => self::validDate($str, is_string($extra) && $extra !== '' ? $extra : 'Y-m-d'),
 
@@ -283,6 +289,47 @@ class PHPQuantio
 			}
 		}
 		return $out;
+	}
+
+	/** Valida CEP brasileiro (8 dígitos, com ou sem hífen). */
+	private static function validCep(string $cep): bool
+	{
+		$digits = preg_replace('/\D/', '', $cep) ?? '';
+		return strlen($digits) === 8;
+	}
+
+	/** Valida número de cartão de crédito via algoritmo de Luhn (com ou sem máscara). */
+	private static function validCreditCard(string $card): bool
+	{
+		$digits = preg_replace('/\D/', '', $card) ?? '';
+		$len = strlen($digits);
+		if ($len < 13 || $len > 19) {
+			return false;
+		}
+		$sum = 0;
+		$alt = false;
+		for ($i = $len - 1; $i >= 0; $i--) {
+			$n = (int) $digits[$i];
+			if ($alt) {
+				$n *= 2;
+				if ($n > 9) {
+					$n -= 9;
+				}
+			}
+			$sum += $n;
+			$alt = !$alt;
+		}
+		return $sum % 10 === 0;
+	}
+
+	/** Valida se uma string é JSON válido. */
+	private static function validJson(string $value): bool
+	{
+		if ($value === '') {
+			return false;
+		}
+		json_decode($value, true);
+		return json_last_error() === JSON_ERROR_NONE;
 	}
 
 	/** Valida telefone brasileiro: 10 dígitos (fixo) ou 11 (celular com 9º dígito). */
@@ -801,7 +848,7 @@ class PHPQuantio
 			],
 			default => [ // strict
 				'X-Frame-Options'         => 'DENY',
-				'Content-Security-Policy' => "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+				'Content-Security-Policy' => "default-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 			],
 		};
 
@@ -826,10 +873,11 @@ class PHPQuantio
 	 * @param int    $window   Duração da janela em segundos.
 	 * @param string $by       'ip' (padrão) ou uma chave própria (ex.: ID do usuário).
 	 */
-	public static function rateLimit(int $requests = 60, int $window = 60, string $by = 'ip'): void
+	public static function rateLimit(int $requests = 60, int $window = 60, string $by = 'ip', ?string $storageDir = null): void
 	{
 		$key  = $by === 'ip' ? (self::clientIp() ?? 'unknown') : $by;
-		$file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'phpq_rl_' . hash('sha256', $key);
+		$dir  = $storageDir ?? sys_get_temp_dir();
+		$file = rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'phpq_rl_' . hash('sha256', $key);
 		$now  = time();
 
 		$fh = @fopen($file, 'c+');
@@ -1059,6 +1107,19 @@ class PHPQuantio
 			return false;
 		}
 
+		// Bloqueia hosts internos/loopback/link-local (mitiga SSRF para redes internas).
+		$host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+		if ($host === '' || $host === 'localhost' || str_ends_with($host, '.localhost')) {
+			return false;
+		}
+		$ip = gethostbyname($host);
+		if ($ip === $host) {
+			return false; // não resolveu
+		}
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+			return false; // IP privado/reservado/loopback
+		}
+
 		$curl = curl_init($url);
 		if ($curl === false) {
 			return false;
@@ -1073,6 +1134,7 @@ class PHPQuantio
 			CURLOPT_CONNECTTIMEOUT  => $timeout,
 			CURLOPT_PROTOCOLS       => CURLPROTO_HTTP | CURLPROTO_HTTPS,
 			CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+			CURLOPT_RESOLVE         => [],
 		]);
 		$response = curl_exec($curl);
 		if ($response === false) {

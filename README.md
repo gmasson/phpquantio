@@ -162,6 +162,15 @@ PHPQuantio::valid('11.222.333/0001-81', 'cnpj');
 // Telefone BR (10 dígitos fixo ou 11 celular)
 PHPQuantio::valid('(11) 98765-4321', 'phone_br'); // true
 
+// CEP (8 dígitos, com ou sem hífen)
+PHPQuantio::valid('01310-100', 'cep'); // true
+
+// Cartão de crédito (Luhn, com ou sem máscara)
+PHPQuantio::valid('4111 1111 1111 1111', 'credit_card'); // true
+
+// JSON válido
+PHPQuantio::valid('{"a":1}', 'json'); // true
+
 // Tamanho entre min e max
 PHPQuantio::valid('texto', 'between', [3, 10]);
 
@@ -202,10 +211,13 @@ PHPQuantio::valid($token, 'csrf', 'form_login');
 | `regex`     | Casar padrão regex                                     | `string` (padrão)                |
 | `matches`   | Igualdade em tempo constante (hash_equals)             | `string` (valor a comparar)       |
 | `different` | Diferente de                                          | `string` (valor a comparar)       |
-| `cpf`       | CPF com dígitos verificadores                          | —                                |
-| `cnpj`      | CNPJ com dígitos verificadores                         | —                                |
-| `phone_br`  | Telefone BR (fixo 10 ou celular 11 dígitos)           | —                                |
-| `password`  | Senha forte                                            | `array` (opções)                 |
+| `cpf`         | CPF com dígitos verificadores                          | —                                |
+| `cnpj`        | CNPJ com dígitos verificadores                         | —                                |
+| `phone_br`    | Telefone BR (fixo 10 ou celular 11 dígitos)           | —                                |
+| `cep`         | CEP brasileiro (8 dígitos, com ou sem hífen)           | —                                |
+| `credit_card` | Cartão de crédito (Luhn, com ou sem máscara)          | —                                |
+| `json`        | String JSON válida                                     | —                                |
+| `password`    | Senha forte                                            | `array` (opções)                 |
 | `date`      | Data no formato                                        | `string` (formato, padrão `Y-m-d`)|
 | `csrf`      | Token CSRF                                             | `string` (namespace opcional)     |
 | `captcha`   | Resposta de captcha (consome após validar)             | `string` (nome do captcha)        |
@@ -417,13 +429,17 @@ PHPQuantio::rateLimit();
 
 // 5 tentativas por 15 minutos, por chave customizada (ex.: ID do usuário)
 PHPQuantio::rateLimit(5, 900, 'login_user_' . $userId);
+
+// Storage próprio (recomendado em hosting compartilhado, fora de /tmp público)
+PHPQuantio::rateLimit(60, 60, 'ip', __DIR__ . '/storage');
 ```
 
-| Parâmetro    | Tipo   | Descrição                                  |
-|--------------|--------|--------------------------------------------|
-| `$requests`  | int    | Máximo de requisições por janela (padrão 60)|
-| `$window`    | int    | Duração da janela em segundos (padrão 60)   |
-| `$by`        | string | `'ip'` (padrão) ou chave própria            |
+| Parâmetro      | Tipo   | Descrição                                  |
+|----------------|--------|--------------------------------------------|
+| `$requests`    | int    | Máximo de requisições por janela (padrão 60)|
+| `$window`      | int    | Duração da janela em segundos (padrão 60)   |
+| `$by`          | string | `'ip'` (padrão) ou chave própria            |
+| `$storageDir`  | ?string| Diretório de storage (padrão `sys_get_temp_dir`)|
 
 > **Fail-open**: se o storage (sys_get_temp_dir) estiver indisponível, o rate limit não derruba o site — apenas não aplica o limite.
 
@@ -548,7 +564,7 @@ if ($code === 200) {
 }
 ```
 
-> Se `$url` vier do usuário, ainda há risco de SSRF para redes internas — valide o destino antes de chamar.
+> Se `$url` vier do usuário, ainda há risco de SSRF para redes internas — valide o destino antes de chamar. A função bloqueia hosts que resolvem para IPs privados/loopback/reservados, mas resolução DNS pode mudar entre a verificação e a requisição (TOCTOU).
 
 ---
 
