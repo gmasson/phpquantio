@@ -1,6 +1,6 @@
 <?php
 /**
- * PHPQuantio 3.1
+ * PHPQuantio 3.2
  * Micro biblioteca PHP de arquivo único para desenvolvimento rápido de
  * ferramentas e sites seguros. Zero dependências, funções estáticas amplas.
  * https://github.com/gmasson/phpquantio
@@ -20,6 +20,12 @@ class PHPQuantio
 	/** Nome da chave de sessão do token CSRF. */
 	private const SESSION_CSRF_KEY = 'phpq_csrf';
 
+	/** Extensões obrigatórias (mbstring para manipulação UTF-8). */
+	private const REQUIRED_EXTENSIONS = ['mbstring'];
+
+	/** Extensões recomendadas (usadas quando disponíveis). */
+	private const RECOMMENDED_EXTENSIONS = ['iconv', 'curl', 'finfo'];
+
 	/** Se proxies confiáveis devem ser honrados (X-Forwarded-*). Defina true
 	 *  apenas quando o app roda atrás de um proxy/CDN conhecido (ex.: Cloudflare). */
 	private static bool $trustProxy = false;
@@ -35,8 +41,9 @@ class PHPQuantio
 	private static ?array $jsonCache = null;
 
 	/**
-	 * Garante versão do PHP e sessão iniciada com cookie endurecido
-	 * (HttpOnly, Secure quando em HTTPS, SameSite=Lax). Idempotente.
+	 * Garante versão do PHP, extensões obrigatórias e sessão iniciada com
+	 * cookie endurecido (HttpOnly, Secure quando em HTTPS, SameSite=Lax).
+	 * Idempotente.
 	 */
 	private static function init(): void
 	{
@@ -49,6 +56,13 @@ class PHPQuantio
 			die('Atualize o PHP para a versão >= ' . self::MIN_PHP_VERSION);
 		}
 
+		// Verifica extensões obrigatórias
+		foreach (self::REQUIRED_EXTENSIONS as $ext) {
+			if (!extension_loaded($ext)) {
+				die("PHPQuantio requer a extensão PHP: {$ext}");
+			}
+		}
+
 		if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
 			session_set_cookie_params([
 				'lifetime' => 0,
@@ -58,9 +72,24 @@ class PHPQuantio
 				'samesite' => 'Lax',
 			]);
 			session_start();
+			// Regenera ID de sessão a cada 30 minutos (previne fixation)
+			if (empty($_SESSION['phpq_last_regeneration']) || 
+			    (time() - $_SESSION['phpq_last_regeneration']) > 1800) {
+				session_regenerate_id(true);
+				$_SESSION['phpq_last_regeneration'] = time();
+			}
 		}
 
 		$inited = true;
+	}
+
+	/**
+	 * Verifica se uma extensão PHP está disponível.
+	 * Útil para verificar extensões opcionais (curl, finfo, iconv).
+	 */
+	public static function hasExtension(string $name): bool
+	{
+		return extension_loaded($name);
 	}
 
 	/** Detecta HTTPS. Só honra X-Forwarded-Proto quando trustProxy() foi habilitado. */
@@ -225,8 +254,9 @@ class PHPQuantio
 	 * @param mixed  $input Valor a verificar.
 	 * @param string $type  required|int|float|numeric|bool|email|url|domain|ip|
 	 *                       ipv4|ipv6|slug|uuid|min|max|length|between|in|not_in|
-	 *                       regex|matches|different|cpf|cnpj|phone_br|password|
-	 *                       date|csrf|captcha
+	 *                       regex|matches|different|cpf|cnpj|phone_br|cep|
+	 *                       credit_card|json|password|date|csrf|captcha|
+	 *                       hex|base64|alnum|alpha|digit|phone_intl|time
 	 * @param mixed  $extra Parâmetro da regra (tamanho, faixa [min,max], lista,
 	 *                       padrão regex, valor a comparar, opções de senha, etc.).
 	 */
@@ -262,6 +292,14 @@ class PHPQuantio
 			'matches'  => hash_equals($str, is_scalar($extra) ? (string) $extra : ''),
 			'different' => $str !== (is_scalar($extra) ? (string) $extra : ''),
 
+			'hex'      => (bool) preg_match('/^[0-9a-f]+$/i', $str),
+			'base64'   => self::validBase64($str),
+			'alnum'    => (bool) preg_match('/^[a-zA-Z0-9]+$/', $str),
+			'alpha'    => (bool) preg_match('/^[a-zA-Z]+$/', $str),
+			'digit'    => (bool) preg_match('/^\d+$/', $str),
+			'phone_intl' => self::validPhoneIntl($str),
+			'time'     => self::validTime($str),
+
 			'cpf'        => self::validCpf($str),
 			'cnpj'       => self::validCnpj($str),
 			'phone_br'   => self::validPhoneBr($str),
@@ -291,17 +329,23 @@ class PHPQuantio
 		return $out;
 	}
 
+	/** Remove caracteres não-dígitos (cache para evitar múltiplas chamadas). */
+	private static function digitsOnly(string $value): string
+	{
+		return preg_replace('/\D/', '', $value) ?? '';
+	}
+
 	/** Valida CEP brasileiro (8 dígitos, com ou sem hífen). */
 	private static function validCep(string $cep): bool
 	{
-		$digits = preg_replace('/\D/', '', $cep) ?? '';
+		$digits = self::digitsOnly($cep);
 		return strlen($digits) === 8;
 	}
 
 	/** Valida número de cartão de crédito via algoritmo de Luhn (com ou sem máscara). */
 	private static function validCreditCard(string $card): bool
 	{
-		$digits = preg_replace('/\D/', '', $card) ?? '';
+		$digits = self::digitsOnly($card);
 		$len = strlen($digits);
 		if ($len < 13 || $len > 19) {
 			return false;
@@ -335,7 +379,7 @@ class PHPQuantio
 	/** Valida telefone brasileiro: 10 dígitos (fixo) ou 11 (celular com 9º dígito). */
 	private static function validPhoneBr(string $phone): bool
 	{
-		$digits = preg_replace('/\D/', '', $phone) ?? '';
+		$digits = self::digitsOnly($phone);
 		if (strlen($digits) === 10) {
 			// Fixo: DDD 11-99 + 8 dígitos (primeiro 2 a 5)
 			return (bool) preg_match('/^[1-9]{2}[2-5]\d{7}$/', $digits);
@@ -350,7 +394,7 @@ class PHPQuantio
 	/** Verifica dígitos verificadores de CPF (aceita com ou sem máscara). */
 	private static function validCpf(string $cpf): bool
 	{
-		$cpf = preg_replace('/\D/', '', $cpf) ?? '';
+		$cpf = self::digitsOnly($cpf);
 		if (strlen($cpf) !== 11 || preg_match('/^(\d)\1{10}$/', $cpf)) {
 			return false;
 		}
@@ -370,7 +414,7 @@ class PHPQuantio
 	/** Verifica dígitos verificadores de CNPJ numérico (aceita com ou sem máscara). */
 	private static function validCnpj(string $cnpj): bool
 	{
-		$cnpj = preg_replace('/\D/', '', $cnpj) ?? '';
+		$cnpj = self::digitsOnly($cnpj);
 		if (strlen($cnpj) !== 14 || preg_match('/^(\d)\1{13}$/', $cnpj)) {
 			return false;
 		}
@@ -418,6 +462,29 @@ class PHPQuantio
 		return true;
 	}
 
+	/** Valida se uma string é base64 válido. */
+	private static function validBase64(string $value): bool
+	{
+		if ($value === '') {
+			return false;
+		}
+		$decoded = base64_decode($value, true);
+		return $decoded !== false && base64_encode($decoded) === $value;
+	}
+
+	/** Valida telefone internacional (formato E.164). */
+	private static function validPhoneIntl(string $phone): bool
+	{
+		// E.164: + seguido de até 15 dígitos
+		return (bool) preg_match('/^\+[1-9]\d{1,14}$/', $phone);
+	}
+
+	/** Valida formato de hora (HH:MM ou HH:MM:SS). */
+	private static function validTime(string $time): bool
+	{
+		return (bool) preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/', $time);
+	}
+
 	/** Valida uma data no formato informado (sem tolerar overflow, ex.: 31/02). */
 	private static function validDate(string $value, string $format): bool
 	{
@@ -460,7 +527,8 @@ class PHPQuantio
 	 *
 	 * @param string $input Dado de entrada.
 	 * @param string $type  tags|html|html_attr|digits|alpha|alnum|slug|filename|
-	 *                       urlsafe|mask|truncate|pass|verify
+	 *                       urlsafe|mask|truncate|pass|verify|json|base64_encode|
+	 *                       base64_decode|url_encode|url_decode
 	 * @param mixed  $extra slug: separador (string); mask: padrão da máscara
 	 *                       (string); truncate: tamanho (int); pass: opções do
 	 *                       password_hash (array); verify: hash a comparar (string).
@@ -515,6 +583,22 @@ class PHPQuantio
 			case 'verify':
 				$hash = is_string($extra) ? $extra : '';
 				return $hash !== '' && password_verify($input, $hash);
+
+			case 'json':
+				return json_encode($input, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+			case 'base64_encode':
+				return base64_encode($input);
+
+			case 'base64_decode':
+				$decoded = base64_decode($input, true);
+				return $decoded !== false ? $decoded : '';
+
+			case 'url_encode':
+				return urlencode($input);
+
+			case 'url_decode':
+				return urldecode($input);
 
 			case 'tags':
 			default:
@@ -1149,8 +1233,12 @@ class PHPQuantio
 	/**
 	 * Calcula dados de paginação (LIMIT/OFFSET e navegação).
 	 *
+	 * @param int $totalItems  Total de itens
+	 * @param int $currentPage Página atual (1-based)
+	 * @param int $perPage     Itens por página
 	 * @return array{current_page:int, per_page:int, total_items:int,
-	 *   total_pages:int, offset:int, has_previous:bool, has_next:bool}
+	 *   total_pages:int, offset:int, has_previous:bool, has_next:bool,
+	 *   from_item:int, to_item:int}
 	 */
 	public static function paginate(int $totalItems, int $currentPage = 1, int $perPage = 10): array
 	{
@@ -1158,6 +1246,9 @@ class PHPQuantio
 		$totalPages = (int) max(1, ceil($totalItems / $perPage));
 		$currentPage = max(1, min($currentPage, $totalPages));
 		$offset = ($currentPage - 1) * $perPage;
+
+		$fromItem = $totalItems > 0 ? $offset + 1 : 0;
+		$toItem = min($offset + $perPage, $totalItems);
 
 		return [
 			'current_page' => $currentPage,
@@ -1167,6 +1258,85 @@ class PHPQuantio
 			'offset'       => $offset,
 			'has_previous' => $currentPage > 1,
 			'has_next'     => $currentPage < $totalPages,
+			'from_item'    => $fromItem,
+			'to_item'      => $toItem,
+		];
+	}
+
+	/**
+	 * Gera um array de opções para select de paginação.
+	 *
+	 * @param int $totalItems Total de itens
+	 * @param int $perPage    Itens por página
+	 * @return array Array de opções com value/label
+	 */
+	public static function paginateOptions(int $totalItems, int $perPage = 10): array
+	{
+		$totalPages = (int) max(1, ceil($totalItems / $perPage));
+		$options = [];
+		for ($i = 1; $i <= $totalPages; $i++) {
+			$options[] = [
+				'value' => $i,
+				'label' => "Página $i",
+			];
+		}
+		return $options;
+	}
+
+	/**
+	 * Gera um identificador único para cache.
+	 *
+	 * @param string $prefix Prefixo do cache
+	 * @param array  $params Parâmetros para gerar o hash
+	 * @return string Chave única de cache
+	 */
+	public static function cacheKey(string $prefix, array $params = []): string
+	{
+		$hash = hash('sha256', serialize($params));
+		return $prefix . '_' . substr($hash, 0, 16);
+	}
+
+	/**
+	 * Verifica se o ambiente é produção (baseado em variáveis comuns).
+	 *
+	 * @return bool True se for produção
+	 */
+	public static function isProduction(): bool
+	{
+		$env = getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? 'production');
+		return in_array(strtolower($env), ['production', 'prod', 'live'], true);
+	}
+
+	/**
+	 * Verifica se o ambiente é desenvolvimento.
+	 *
+	 * @return bool True se for desenvolvimento
+	 */
+	public static function isDevelopment(): bool
+	{
+		return !self::isProduction();
+	}
+
+	/**
+	 * Retorna informações do ambiente.
+	 *
+	 * @return array Informações do ambiente
+	 */
+	public static function environmentInfo(): array
+	{
+		return [
+			'php_version' => PHP_VERSION,
+			'environment' => self::isProduction() ? 'production' : 'development',
+			'extensions'  => [
+				'mbstring' => extension_loaded('mbstring'),
+				'iconv'    => extension_loaded('iconv'),
+				'curl'     => extension_loaded('curl'),
+				'finfo'    => extension_loaded('finfo'),
+				'openssl'  => extension_loaded('openssl'),
+			],
+			'https'      => self::isHttps(),
+			'ip'         => self::clientIp(),
 		];
 	}
 }
+

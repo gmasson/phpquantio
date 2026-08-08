@@ -2,7 +2,7 @@
 
 [![PHP](https://img.shields.io/badge/PHP-%3E%3D%208.2-777BB4.svg?style=flat-square&logo=php)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Versão-3.1-green.svg?style=flat-square)]()
+[![Version](https://img.shields.io/badge/Versão-3.2-green.svg?style=flat-square)]()
 
 > Micro biblioteca PHP de **arquivo único** para desenvolvimento rápido de ferramentas e sites seguros. Zero dependências, funções estáticas amplas.
 
@@ -10,7 +10,7 @@ PHPQuantio é uma biblioteca minimalista que reúne em uma única classe estáti
 
 - **Repositório:** https://github.com/gmasson/phpquantio
 - **Licença:** MIT
-- **Versão:** 3.1
+- **Versão:** 3.2
 - **PHP mínimo:** 8.2
 
 ---
@@ -23,6 +23,44 @@ PHPQuantio é uma biblioteca minimalista que reúne em uma única classe estáti
 - **Foco em Brasil** — validação de CPF, CNPJ, telefone BR, máscaras LGPD, datas em pt-BR.
 - **Zero dependências** — usa apenas extensões nativas do PHP (cURL, finfo, mbstring, iconv).
 - **Idempotente** — funções de init e sessão podem ser chamadas várias vezes sem efeito colateral.
+- **Extensões verificadas** — verifica automaticamente extensões obrigatórias e opcionais.
+
+---
+
+## Novidades na 3.2
+
+### Segurança
+- **Verificação de extensões** — `init()` agora verifica se extensões obrigatórias (mbstring) estão disponíveis
+- **Regeneração de sessão** — ID de sessão é regenerado a cada 30 minutos (previne fixation)
+- **Helper `hasExtension()`** — verifica se extensões opcionais (curl, finfo, iconv) estão disponíveis
+
+### Novas Validações
+- `hex` — valida string hexadecimal
+- `base64` — valida string base64
+- `alnum` — valida alfanumérico (a-zA-Z0-9)
+- `alpha` — valida apenas letras (a-zA-Z)
+- `digit` — valida apenas dígitos (0-9)
+- `phone_intl` — valida telefone internacional (E.164)
+- `time` — valida formato de hora (HH:MM ou HH:MM:SS)
+
+### Novos Filtros
+- `json` — codifica valor para JSON (UTF-8, sem escaping de unicode)
+- `base64_encode` — codifica para base64
+- `base64_decode` — decodifica de base64
+- `url_encode` — codifica para URL (urlencode)
+- `url_decode` — decodifica de URL (urldecode)
+
+### Novas Funcionalidades
+- **`paginateOptions()`** — gera array de opções para select de paginação
+- **`cacheKey()`** — gera chave única para cache baseada em parâmetros
+- **`isProduction()`** — verifica se ambiente é produção
+- **`isDevelopment()`** — verifica se ambiente é desenvolvimento
+- **`environmentInfo()`** — retorna informações do ambiente (PHP, extensões, HTTPS, IP)
+
+### Melhorias
+- **`digitsOnly()`** — método helper interno para remover não-dígitos (evita duplicação de regex)
+- **Documentação aprimorada** — melhor documentação de tipos e parâmetros
+- **Código otimizado** — redução de código duplicado em validações
 
 ---
 
@@ -211,6 +249,13 @@ PHPQuantio::valid($token, 'csrf', 'form_login');
 | `regex`     | Casar padrão regex                                     | `string` (padrão)                |
 | `matches`   | Igualdade em tempo constante (hash_equals)             | `string` (valor a comparar)       |
 | `different` | Diferente de                                          | `string` (valor a comparar)       |
+| `hex`       | String hexadecimal                                     | —                                |
+| `base64`    | String base64 válida                                   | —                                |
+| `alnum`     | Alfanumérico (a-zA-Z0-9)                              | —                                |
+| `alpha`     | Apenas letras (a-zA-Z)                                | —                                |
+| `digit`     | Apenas dígitos (0-9)                                   | —                                |
+| `phone_intl`| Telefone internacional (E.164)                        | —                                |
+| `time`      | Formato de hora (HH:MM ou HH:MM:SS)                   | —                                |
 | `cpf`         | CPF com dígitos verificadores                          | —                                |
 | `cnpj`        | CNPJ com dígitos verificadores                         | —                                |
 | `phone_br`    | Telefone BR (fixo 10 ou celular 11 dígitos)           | —                                |
@@ -673,6 +718,79 @@ if ($erros) {
 // Processa...
 PHPQuantio::flash('set', 'Mensagem enviada com sucesso!', 'success');
 PHPQuantio::jsonResponse(['status' => 'ok', 'token' => PHPQuantio::generate('csrf', 'form_contato')]);
+```
+
+---
+
+## Utilitários Adicionais
+
+### `hasExtension()` — Verifica extensões PHP
+
+Verifica se uma extensão PHP está disponível (útil para verificar extensões opcionais):
+
+```php
+if (PHPQuantio::hasExtension('curl')) {
+    $status = PHPQuantio::status('https://example.com');
+}
+
+if (PHPQuantio::hasExtension('finfo')) {
+    $result = PHPQuantio::upload($_FILES['file'], '/uploads');
+}
+```
+
+### `paginateOptions()` — Opções de paginação
+
+Gera array de opções para select de paginação:
+
+```php
+$options = PHPQuantio::paginateOptions(150, 10);
+// [
+//   ['value' => 1, 'label' => 'Página 1'],
+//   ['value' => 2, 'label' => 'Página 2'],
+//   ...
+// ]
+```
+
+### `cacheKey()` — Chave de cache
+
+Gera chave única para cache baseada em parâmetros:
+
+```php
+$key = PHPQuantio::cacheKey('produtos', ['categoria' => 'eletronicos', 'pagina' => 2]);
+// "produtos_a1b2c3d4e5f6g7h8"
+```
+
+### `isProduction()` / `isDevelopment()` — Ambiente
+
+Verifica se o ambiente é produção ou desenvolvimento:
+
+```php
+if (PHPQuantio::isProduction()) {
+    // Configurações de produção
+} else {
+    // Configurações de desenvolvimento
+}
+```
+
+### `environmentInfo()` — Informações do ambiente
+
+Retorna informações do ambiente (PHP, extensões, HTTPS, IP):
+
+```php
+$info = PHPQuantio::environmentInfo();
+// [
+//   'php_version' => '8.2.12',
+//   'environment' => 'development',
+//   'extensions'  => [
+//     'mbstring' => true,
+//     'iconv'    => true,
+//     'curl'     => true,
+//     'finfo'    => true,
+//     'openssl'  => true,
+//   ],
+//   'https' => false,
+//   'ip'    => '127.0.0.1',
+// ]
 ```
 
 ---
